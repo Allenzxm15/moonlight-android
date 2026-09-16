@@ -246,13 +246,22 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {
-                checkMovementForAllButtons(x, y);
+                // Toggle buttons remain logically pressed after the finger is lifted. Do not
+                // allow their touch gesture to slide onto another key, otherwise that key can
+                // receive ACTION_DOWN without a matching ACTION_UP when we keep the toggle
+                // latched below.
+                if (!enableSwitchDown) {
+                    checkMovementForAllButtons(x, y);
+                }
 
                 return true;
             }
             case MotionEvent.ACTION_CANCEL:
             case MotionEvent.ACTION_UP: {
                 if(enableSwitchDown&&switchDown){
+                    // The latched branch intentionally skips onReleaseCallback(), but the
+                    // pending long-click callback must still be cancelled when touch ends.
+                    virtualController.getHandler().removeCallbacks(longClickRunnable);
                     return true;
                 }
                 setPressed(false);
