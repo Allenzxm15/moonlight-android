@@ -49,6 +49,10 @@ import java.util.Set;
 
 public class KeyBoardController {
 
+    public static final int TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE = 1001;
+    private static final String TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID =
+            "m_s_" + TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE;
+
     public enum ControllerMode {
         Active,
         MoveButtons,
@@ -301,10 +305,25 @@ public class KeyBoardController {
         layoutParams.setMargins(x, y, 0, 0);
 
         frame_layout.addView(element, layoutParams);
+
+        if (TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID.equals(element.elementId) &&
+                element instanceof KeyBoardDigitalButton && Game.instance != null) {
+            ((KeyBoardDigitalButton) element).setSwitchDown(
+                    Game.instance.isAbsoluteTouchMouseButtonsSwapped());
+        }
     }
 
     public List<keyBoardVirtualControllerElement> getElements() {
         return elements;
+    }
+
+    public void syncTouchMouseButtonSwapToggle(boolean swapped) {
+        for (keyBoardVirtualControllerElement element : elements) {
+            if (TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID.equals(element.elementId) &&
+                    element instanceof KeyBoardDigitalButton) {
+                ((KeyBoardDigitalButton) element).setSwitchDown(swapped);
+            }
+        }
     }
 
     private static final void _DBG(String text) {
@@ -369,7 +388,13 @@ public class KeyBoardController {
         }
         //1-鼠标 0-按键 2-摇杆 3-十字键
         if (keyEvent.getSource() == 1) {
-            Game.instance.mouseButtonEvent(keyEvent.getKeyCode(), KeyEvent.ACTION_DOWN == keyEvent.getAction());
+            if (keyEvent.getKeyCode() == TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE) {
+                if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) {
+                    Game.instance.toggleAbsoluteTouchMouseButtons();
+                }
+            } else {
+                Game.instance.mouseButtonEvent(keyEvent.getKeyCode(), KeyEvent.ACTION_DOWN == keyEvent.getAction());
+            }
         } else {
             Game.instance.onKey(null, keyEvent.getKeyCode(), keyEvent);
         }

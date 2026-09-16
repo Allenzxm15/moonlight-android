@@ -163,6 +163,9 @@ public class KeyBoardControllerConfigurationLoader {
         }
 
         if (sticky) {
+            final boolean tapToToggle = keyShort == KeyEvent.KEYCODE_SHIFT_LEFT ||
+                    keyShort == KeyEvent.KEYCODE_SHIFT_RIGHT;
+
             button.addDigitalButtonListener(new KeyBoardDigitalButton.DigitalButtonListener() {
                 @Override
                 public void onClick() {
@@ -173,12 +176,18 @@ public class KeyBoardControllerConfigurationLoader {
                     KeyEvent keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, keyShort);
                     keyEvent.setSource(type);
                     controller.sendKeyEvent(keyEvent);
+
+                    if (tapToToggle) {
+                        button.setSticky(true);
+                    }
                 }
 
                 @Override
                 public void onLongClick() {
-                    button.setSticky(true);
-                    controller.vibrate(-1);
+                    if (!tapToToggle) {
+                        button.setSticky(true);
+                        controller.vibrate(-1);
+                    }
                 }
 
                 @Override

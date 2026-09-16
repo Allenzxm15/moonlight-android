@@ -220,6 +220,12 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
         this.enableSwitchDown = enableSwitchDown;
     }
 
+    public void setSwitchDown(boolean switchDown) {
+        this.switchDown = switchDown;
+        setPressed(switchDown);
+        invalidate();
+    }
+
     @Override
     public boolean onElementTouchEvent(MotionEvent event) {
         // get masked (not specific to a pointer) action
@@ -231,12 +237,12 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
             case MotionEvent.ACTION_DOWN: {
                 movingButton = null;
                 setPressed(true);
-                onClickCallback();
-
-                invalidate();
                 if(enableSwitchDown){
                     switchDown=!switchDown;
                 }
+                onClickCallback();
+
+                invalidate();
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {

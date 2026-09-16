@@ -40,6 +40,12 @@
         "switchButton": 1
       },
       {
+        "name": "L/R",
+        "code": 1001,
+        "switchButton": 1,
+        "desc": "切换单点触控的左右鼠标键映射；再次点击恢复"
+      },
+      {
         "name": "MM",
         "code": 2
       },

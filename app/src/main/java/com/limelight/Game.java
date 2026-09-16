@@ -296,6 +296,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     public boolean isInputOnly = true;
     public boolean allowChangeMouseMode = true;
+    private int currentMouseMode = 0;
     private boolean onExternelDisplay = false;
     private ImageButton floatingMenuButton;
     private ImageButton overlayToggleButton;
@@ -4136,6 +4137,22 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 .show();
     }
 
+    public boolean isAbsoluteTouchMouseButtonsSwapped() {
+        return currentMouseMode == 5;
+    }
+
+    public void toggleAbsoluteTouchMouseButtons() {
+        int nextMode = isAbsoluteTouchMouseButtonsSwapped() ? 1 : 5;
+        applyMouseMode(nextMode);
+
+        if (prefConfig.rememberMouseMode) {
+            ProfilesManager.getInstance().getOverlayingSharedPreferences(this)
+                    .edit()
+                    .putString("mouse_mode_list", String.valueOf(nextMode))
+                    .apply();
+        }
+    }
+
     //本地鼠标光标切换
     private void toggleMouseLocalCursor(){
         if (!grabbedInput) {
@@ -4151,6 +4168,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private void applyMouseMode(int mode) {
+        currentMouseMode = mode;
+
         switch (mode) {
             case 0: // Multi-touch
                 prefConfig.enableMultiTouchScreen = true;
@@ -4190,6 +4209,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // Always exit zoom mode if mouse mode has changed
         isPanZoomMode = false;
         updateZoomButtonAppearance();
+
+        if (keyBoardController != null) {
+            keyBoardController.syncTouchMouseButtonSwapToggle(mode == 5);
+        }
     }
 
     public void toggleHUD() {
