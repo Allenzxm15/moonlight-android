@@ -96,9 +96,10 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".noirdebug"
-            resValue "string", "app_label", "Diana"
-            resValue "string", "app_label_root", "Diana (Root)"
-            resValue "string", "app_label_game", "Diana (Game)"
+            versionNameSuffix "-lr-toggle-fix1"
+            resValue "string", "app_label", "Artemis L/R"
+            resValue "string", "app_label_root", "Artemis L/R (Root)"
+            resValue "string", "app_label_game", "Artemis L/R"
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
