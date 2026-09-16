@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="touch_shortcut_release_other_modifiers">请先松开其他 Ctrl/Shift/Alt/Win 键；新增的 LCtrl/LShift 锁定键可以保持开启。</string>
+    <string name="touch_shortcut_queue_full">请等待已排队的数字输入完成。</string>
+</resources>

@@ -19,6 +19,7 @@ import androidx.preference.PreferenceManager;
 import com.limelight.GameMenu;
 import com.limelight.LimeLog;
 import com.limelight.R;
+import com.limelight.binding.input.TouchShortcutState;
 import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.input.KeyboardPacket;
 import com.limelight.preferences.PreferenceConfiguration;
@@ -157,6 +158,25 @@ public class KeyBoardControllerConfigurationLoader {
         KeyBoardDigitalButton button = new KeyBoardDigitalButton(controller, elementId, layer, context);
         button.setText(text);
         button.setIcon(icon);
+
+        if (type == 1 && TouchShortcutState.isAction(keyShort)) {
+            // Local actions activate once on finger-up, never emit their internal code
+            // as a host key, and cannot slide into or be activated by neighboring keys.
+            button.setClickOnRelease(true);
+            button.addDigitalButtonListener(new KeyBoardDigitalButton.DigitalButtonListener() {
+                @Override
+                public void onClick() {
+                    controller.performTouchShortcut(keyShort);
+                }
+
+                @Override
+                public void onLongClick() { }
+
+                @Override
+                public void onRelease() { }
+            });
+            return button;
+        }
 
         if (elementId.startsWith("m_s_") || elementId.startsWith("key_s_")) {
             button.setEnableSwitchDown(true);

@@ -13,6 +13,7 @@ import com.limelight.binding.audio.AndroidAudioRenderer;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.input.GameInputDevice;
 import com.limelight.binding.input.KeyboardTranslator;
+import com.limelight.binding.input.TouchShortcutState;
 import com.limelight.binding.input.capture.InputCaptureManager;
 import com.limelight.binding.input.capture.InputCaptureProvider;
 import com.limelight.binding.input.touch.AbsoluteTouchContext;
@@ -170,6 +171,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     private ControllerHandler controllerHandler;
     private KeyboardTranslator keyboardTranslator;
+    private TouchShortcutState touchShortcuts;
     private VirtualController virtualController;
 
     private KeyBoardController keyBoardController;
@@ -809,6 +811,22 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 PlatformBinding.getCryptoProvider(this), serverCert);
         controllerHandler = new ControllerHandler(this, conn, this, prefConfig);
         keyboardTranslator = new KeyboardTranslator(prefConfig);
+        touchShortcuts = new TouchShortcutState((key, down, modifiers) -> {
+            if (connected) {
+                conn.sendKeyboardInput(key, down ? KeyboardPacket.KEY_DOWN : KeyboardPacket.KEY_UP,
+                        (byte) (modifiers | modifierFlags), (byte) 0);
+            }
+        }, new TouchShortcutState.Scheduler() {
+            @Override
+            public void postDelayed(Runnable task, long delayMs) {
+                timerHandler.postDelayed(task, delayMs);
+            }
+
+            @Override
+            public void removeCallbacks(Runnable task) {
+                timerHandler.removeCallbacks(task);
+            }
+        });
 
         InputManager inputManager = (InputManager) getSystemService(Context.INPUT_SERVICE);
         inputManager.registerInputDeviceListener(keyboardTranslator, null);
@@ -1404,6 +1422,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
 
+        if (!hasFocus) releaseTouchShortcuts();
+
         // We can't guarantee the state of modifiers keys which may have
         // lifted while focus was not on us. Clear the modifier state.
         this.modifierFlags = 0;
@@ -1745,6 +1765,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     protected void onPause() {
+        releaseTouchShortcuts();
         if (isFinishing()) {
             // Stop any further input device notifications before we lose focus (and pointer capture)
             if (controllerHandler != null) {
@@ -1863,6 +1884,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private void setInputGrabState(boolean grab) {
+        if (!grab) releaseTouchShortcuts();
         // Grab/ungrab the mouse cursor
         if (grab) {
             inputCaptureProvider.enableCapture();
@@ -2019,7 +2041,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private byte getModifierState() {
-        return (byte) modifierFlags;
+        return (byte) (modifierFlags | (touchShortcuts == null ? 0 : touchShortcuts.getModifiers()));
     }
 
     @Override
@@ -2029,6 +2051,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyDown(KeyEvent event) {
+        cancelTouchShortcutTyping();
         // Pass-through virtual navigation keys
         if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
@@ -2179,8 +2202,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 }
             }
 
-            conn.sendKeyboardInput(translated, KeyboardPacket.KEY_UP, getModifierState(event),
-                    keyboardTranslator.hasNormalizedMapping(event.getKeyCode(), deviceId) ? 0 : MoonBridge.SS_KBE_FLAG_NON_NORMALIZED);
+            // Releasing the ordinary Ctrl/Shift key must not unlock its dedicated toggle.
+            if (touchShortcuts == null || !touchShortcuts.holdsModifier(translated)) {
+                conn.sendKeyboardInput(translated, KeyboardPacket.KEY_UP, getModifierState(event),
+                        keyboardTranslator.hasNormalizedMapping(event.getKeyCode(), deviceId) ? 0 : MoonBridge.SS_KBE_FLAG_NON_NORMALIZED);
+            }
         }
 
         return true;
@@ -2755,6 +2781,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     // Returns true if the event was consumed
     // NB: View is only present if called from a view callback
     public boolean handleMotionEvent(View view, MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN ||
+                event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN ||
+                event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) {
+            // Restore modifiers before a user click, even if it interrupts a number macro.
+            cancelTouchShortcutTyping();
+        }
         // Pass through mouse/touch/joystick input if we're not grabbing
         if (!grabbedInput) {
             return false;
@@ -3438,6 +3470,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private void stopConnection() {
+        releaseTouchShortcuts();
         if (connecting || connected) {
             connecting = connected = false;
             updatePipAutoEnter();
@@ -3896,6 +3929,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public void keyboardEvent(boolean buttonDown, short keyCode) {
+        if (buttonDown) cancelTouchShortcutTyping();
         short keyMap = keyboardTranslator.translate(keyCode, 0, -1);
         if (keyMap != 0) {
             // handleSpecialKeys() takes the Android keycode
@@ -3906,7 +3940,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             if (buttonDown) {
                 conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_DOWN, getModifierState(), (byte)0);
             }
-            else {
+            else if (touchShortcuts == null || !touchShortcuts.holdsModifier(keyMap)) {
                 conn.sendKeyboardInput(keyMap, KeyboardPacket.KEY_UP, getModifierState(), (byte)0);
             }
         }
@@ -4141,6 +4175,61 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return currentMouseMode == 5;
     }
 
+    public int getCurrentMouseMode() {
+        return currentMouseMode;
+    }
+
+    public void prepareTouchShortcuts(boolean enabled) {
+        int mode = TouchShortcutState.initialMouseMode(currentMouseMode, enabled,
+                allowChangeMouseMode && !isOnExternalDisplay());
+        if (mode != currentMouseMode) applyMouseMode(mode);
+    }
+
+    public boolean isTouchShortcutLocked(int code) {
+        if (touchShortcuts == null) return false;
+        if (code == TouchShortcutState.CTRL_TOGGLE) return touchShortcuts.isCtrlLocked();
+        if (code == TouchShortcutState.SHIFT_TOGGLE) return touchShortcuts.isShiftLocked();
+        return code == TouchShortcutState.MOUSE_TOGGLE && isAbsoluteTouchMouseButtonsSwapped();
+    }
+
+    public void performTouchShortcut(int code) {
+        if (!connected || !grabbedInput || touchShortcuts == null) return;
+        switch (code) {
+            case TouchShortcutState.MOUSE_TOGGLE:
+                if (allowChangeMouseMode) toggleAbsoluteTouchMouseButtons();
+                break;
+            case TouchShortcutState.CTRL_TOGGLE:
+                touchShortcuts.toggleCtrl();
+                break;
+            case TouchShortcutState.SHIFT_TOGGLE:
+                touchShortcuts.toggleShift();
+                break;
+            case TouchShortcutState.TYPE_1000:
+            case TouchShortcutState.TYPE_1000000:
+                // Do not release modifiers owned by a physical keyboard or another overlay.
+                if (modifierFlags != 0) {
+                    Toast.makeText(this, R.string.touch_shortcut_release_other_modifiers,
+                            Toast.LENGTH_SHORT).show();
+                } else if (!touchShortcuts.typeNumber(code == TouchShortcutState.TYPE_1000
+                        ? "1000" : "1000000")) {
+                    Toast.makeText(this, R.string.touch_shortcut_queue_full, Toast.LENGTH_SHORT).show();
+                }
+                break;
+            default:
+                return;
+        }
+        if (keyBoardController != null) keyBoardController.syncTouchShortcutButtons();
+    }
+
+    public void cancelTouchShortcutTyping() {
+        if (touchShortcuts != null && touchShortcuts.isTyping()) touchShortcuts.cancelTyping();
+    }
+
+    public void releaseTouchShortcuts() {
+        if (touchShortcuts != null) touchShortcuts.releaseAll();
+        if (keyBoardController != null) keyBoardController.resetTouchShortcutButtons();
+    }
+
     public void toggleAbsoluteTouchMouseButtons() {
         int nextMode = isAbsoluteTouchMouseButtonsSwapped() ? 1 : 5;
         applyMouseMode(nextMode);
@@ -4211,7 +4300,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         updateZoomButtonAppearance();
 
         if (keyBoardController != null) {
-            keyBoardController.syncTouchMouseButtonSwapToggle(mode == 5);
+            keyBoardController.syncTouchShortcutButtons();
         }
     }
 

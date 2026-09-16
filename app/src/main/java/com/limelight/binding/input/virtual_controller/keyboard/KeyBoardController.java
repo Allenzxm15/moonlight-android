@@ -29,6 +29,7 @@ import com.limelight.GameMenu;
 import com.limelight.LimeLog;
 import com.limelight.R;
 import com.limelight.binding.input.ControllerHandler;
+import com.limelight.binding.input.TouchShortcutState;
 import com.limelight.nvstream.NvConnection;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.KeyConfigHelper;
@@ -49,7 +50,7 @@ import java.util.Set;
 
 public class KeyBoardController {
 
-    public static final int TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE = 1001;
+    public static final int TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE = TouchShortcutState.MOUSE_TOGGLE;
     private static final String TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID =
             "m_s_" + TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE;
 
@@ -164,6 +165,7 @@ public class KeyBoardController {
                 String message;
 
                 if (currentMode == ControllerMode.Active) {
+                    releaseTouchShortcuts();
                     currentMode = ControllerMode.DisableEnableButtons;
                     showElements();
                     showControlButtons(true);
@@ -179,6 +181,7 @@ public class KeyBoardController {
                 } else {
                     currentMode = ControllerMode.Active;
                     KeyBoardControllerConfigurationLoader.saveProfile(KeyBoardController.this, context);
+                    prepareTouchShortcuts();
                     message = context.getString(R.string.configuration_mode_exiting);
                 }
 
@@ -232,6 +235,7 @@ public class KeyBoardController {
     }
 
     public void hide(boolean temporary) {
+        releaseTouchShortcuts();
         for (keyBoardVirtualControllerElement element : elements) {
             element.setVisibility(View.GONE);
         }
@@ -247,6 +251,7 @@ public class KeyBoardController {
     }
 
     public void show() {
+        prepareTouchShortcuts();
         showEnabledElements();
         buttonConfigure.setVisibility(View.VISIBLE);
         shown = true;
@@ -283,6 +288,7 @@ public class KeyBoardController {
     }
 
     public void removeElements() {
+        releaseTouchShortcuts();
         for (keyBoardVirtualControllerElement element : elements) {
             frame_layout.removeView(element);
         }
@@ -306,23 +312,64 @@ public class KeyBoardController {
 
         frame_layout.addView(element, layoutParams);
 
-        if (TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID.equals(element.elementId) &&
-                element instanceof KeyBoardDigitalButton && Game.instance != null) {
-            ((KeyBoardDigitalButton) element).setSwitchDown(
-                    Game.instance.isAbsoluteTouchMouseButtonsSwapped());
-        }
+        syncTouchShortcutButton(element);
     }
 
     public List<keyBoardVirtualControllerElement> getElements() {
         return elements;
     }
 
-    public void syncTouchMouseButtonSwapToggle(boolean swapped) {
+    private void prepareTouchShortcuts() {
+        if (!(context instanceof Game)) return;
+        boolean enabled = false;
         for (keyBoardVirtualControllerElement element : elements) {
             if (TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID.equals(element.elementId) &&
-                    element instanceof KeyBoardDigitalButton) {
-                ((KeyBoardDigitalButton) element).setSwitchDown(swapped);
+                    element.enabled && !element.hidden) {
+                enabled = true;
+                break;
             }
+        }
+        ((Game) context).prepareTouchShortcuts(enabled);
+        syncTouchShortcutButtons();
+    }
+
+    private void releaseTouchShortcuts() {
+        if (context instanceof Game) ((Game) context).releaseTouchShortcuts();
+        resetTouchShortcutButtons();
+    }
+
+    public void resetTouchShortcutButtons() {
+        for (keyBoardVirtualControllerElement element : elements) {
+            if (element instanceof KeyBoardDigitalButton) {
+                ((KeyBoardDigitalButton) element).cancelActionTouch();
+            }
+        }
+        syncTouchShortcutButtons();
+    }
+
+    public void syncTouchShortcutButtons() {
+        for (keyBoardVirtualControllerElement element : elements) syncTouchShortcutButton(element);
+    }
+
+    private void syncTouchShortcutButton(keyBoardVirtualControllerElement element) {
+        if (!(context instanceof Game) || !(element instanceof KeyBoardDigitalButton)) return;
+        Game game = (Game) context;
+        KeyBoardDigitalButton button = (KeyBoardDigitalButton) element;
+        if (TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_ELEMENT_ID.equals(element.elementId)) {
+            int mode = game.getCurrentMouseMode();
+            button.setText(mode == 1 ? "L" : mode == 5 ? "R" : "L/R");
+            button.setSticky(mode == 5);
+        } else if (element.elementId.equals("m_s_" + TouchShortcutState.CTRL_TOGGLE)) {
+            button.setSticky(game.isTouchShortcutLocked(TouchShortcutState.CTRL_TOGGLE));
+        } else if (element.elementId.equals("m_s_" + TouchShortcutState.SHIFT_TOGGLE)) {
+            button.setSticky(game.isTouchShortcutLocked(TouchShortcutState.SHIFT_TOGGLE));
+        }
+    }
+
+    public void performTouchShortcut(int code) {
+        if (context instanceof Game) {
+            ((Game) context).performTouchShortcut(code);
+            vibrate(KeyEvent.ACTION_DOWN);
         }
     }
 
@@ -388,11 +435,12 @@ public class KeyBoardController {
         }
         //1-鼠标 0-按键 2-摇杆 3-十字键
         if (keyEvent.getSource() == 1) {
-            if (keyEvent.getKeyCode() == TOUCH_MOUSE_BUTTON_SWAP_TOGGLE_CODE) {
+            if (TouchShortcutState.isAction(keyEvent.getKeyCode())) {
                 if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) {
-                    Game.instance.toggleAbsoluteTouchMouseButtons();
+                    performTouchShortcut(keyEvent.getKeyCode());
                 }
             } else {
+                if (keyEvent.getAction() == KeyEvent.ACTION_DOWN) Game.instance.cancelTouchShortcutTyping();
                 Game.instance.mouseButtonEvent(keyEvent.getKeyCode(), KeyEvent.ACTION_DOWN == keyEvent.getAction());
             }
         } else {

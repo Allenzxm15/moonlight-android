@@ -62,6 +62,8 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
     private int layer;
     private KeyBoardDigitalButton movingButton = null;
     private boolean sticky = false;
+    private boolean clickOnRelease;
+    private boolean actionTouchActive;
 
     boolean inRange(float x, float y) {
         return (this.getX() < x && this.getX() + this.getWidth() > x) &&
@@ -69,6 +71,10 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
     }
 
     public boolean checkMovement(float x, float y, KeyBoardDigitalButton movingButton) {
+        if (clickOnRelease || movingButton.clickOnRelease || enableSwitchDown ||
+                movingButton.enableSwitchDown || !enabled || hidden || getVisibility() != VISIBLE) {
+            return false;
+        }
         // check if the movement happened in the same layer
         if (movingButton.layer != this.layer) {
             return false;
@@ -140,6 +146,49 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
 
     public void setSticky(boolean sticky) {
         this.sticky = sticky;
+        invalidate();
+    }
+
+    public void setClickOnRelease(boolean clickOnRelease) {
+        this.clickOnRelease = clickOnRelease;
+    }
+
+    public void cancelActionTouch() {
+        if (!clickOnRelease) return;
+        actionTouchActive = false;
+        setPressed(false);
+        invalidate();
+    }
+
+    private boolean onActionTouchEvent(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                actionTouchActive = true;
+                setPressed(true);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (event.getX() < 0 || event.getX() >= getWidth() ||
+                        event.getY() < 0 || event.getY() >= getHeight()) {
+                    cancelActionTouch();
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+                boolean activate = actionTouchActive && event.getX() >= 0 &&
+                        event.getX() < getWidth() && event.getY() >= 0 && event.getY() < getHeight();
+                cancelActionTouch();
+                if (activate) {
+                    for (DigitalButtonListener listener : listeners) listener.onClick();
+                }
+                break;
+            case MotionEvent.ACTION_CANCEL:
+            case MotionEvent.ACTION_POINTER_UP:
+                cancelActionTouch();
+                break;
+            default:
+                break;
+        }
+        invalidate();
+        return true;
     }
 
     public boolean isSticky() {
@@ -152,6 +201,11 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
         canvas.drawColor(Color.TRANSPARENT);
 
         paint.setTextSize(getPercent(getWidth(), 25));
+        // Fit longer labels such as "1000000" inside the configurable button width.
+        float textWidth = paint.measureText(text);
+        if (textWidth > getWidth() * 0.8f) {
+            paint.setTextSize(paint.getTextSize() * getWidth() * 0.8f / textWidth);
+        }
         paint.setTextAlign(Paint.Align.CENTER);
         paint.setStrokeWidth(getDefaultStrokeWidth());
 
@@ -228,6 +282,7 @@ public class KeyBoardDigitalButton extends keyBoardVirtualControllerElement {
 
     @Override
     public boolean onElementTouchEvent(MotionEvent event) {
+        if (clickOnRelease) return onActionTouchEvent(event);
         // get masked (not specific to a pointer) action
         float x = getX() + event.getX();
         float y = getY() + event.getY();

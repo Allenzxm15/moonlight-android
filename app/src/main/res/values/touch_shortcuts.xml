@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="touch_shortcut_release_other_modifiers">Release other Ctrl/Shift/Alt/Win keys first. LCtrl/LShift toggle buttons can stay on.</string>
+    <string name="touch_shortcut_queue_full">Please wait for the queued numbers to finish.</string>
+</resources>

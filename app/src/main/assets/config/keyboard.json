@@ -46,6 +46,28 @@
         "desc": "切换单点触控的左右鼠标键映射；再次点击恢复"
       },
       {
+        "name": "LCtrl",
+        "code": 1002,
+        "switchButton": 1,
+        "desc": "点击锁定左 Ctrl，再点释放；可与 LShift 同时开启"
+      },
+      {
+        "name": "LShift",
+        "code": 1003,
+        "switchButton": 1,
+        "desc": "点击锁定左 Shift，再点释放"
+      },
+      {
+        "name": "1000",
+        "code": 1004,
+        "desc": "输入 1000，不清空原内容，不回车"
+      },
+      {
+        "name": "1000000",
+        "code": 1005,
+        "desc": "输入 1000000，不清空原内容，不回车"
+      },
+      {
         "name": "MM",
         "code": 2
       },
